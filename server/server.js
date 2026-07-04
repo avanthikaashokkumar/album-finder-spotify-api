@@ -1,11 +1,16 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 app.use(cors());
 app.use(express.json());
@@ -13,7 +18,6 @@ app.use(express.json());
 const SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token";
 const SPOTIFY_API_BASE_URL = "https://api.spotify.com/v1";
 
-// These variables live only on the backend, not in the browser.
 const clientId = process.env.SPOTIFY_CLIENT_ID;
 const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
 
@@ -25,7 +29,6 @@ async function getSpotifyToken() {
     throw new Error("Missing Spotify credentials. Add them to your .env file.");
   }
 
-  // Reuse the access token until it is close to expiring.
   if (cachedToken && Date.now() < tokenExpiresAt) {
     return cachedToken;
   }
@@ -47,8 +50,6 @@ async function getSpotifyToken() {
 
   const data = await response.json();
   cachedToken = data.access_token;
-
-  // Spotify usually returns 3600 seconds. Subtract 60 seconds as a safety buffer.
   tokenExpiresAt = Date.now() + (data.expires_in - 60) * 1000;
 
   return cachedToken;
@@ -79,7 +80,6 @@ app.get("/api/search", async (req, res) => {
       return res.status(400).json({ message: "Please enter an artist name." });
     }
 
-    // First, search Spotify for the artist.
     const searchData = await spotifyRequest(
       `/search?${new URLSearchParams({
         q: artistName,
@@ -94,7 +94,6 @@ app.get("/api/search", async (req, res) => {
       return res.status(404).json({ message: "No artist found. Try another name." });
     }
 
-    // Then, use the artist ID to get albums and singles.
     const albumsData = await spotifyRequest(
       `/artists/${artist.id}/albums?${new URLSearchParams({
         include_groups: "album,single",
@@ -134,7 +133,6 @@ function removeDuplicateAlbums(albums) {
   const seen = new Set();
 
   return albums.filter((album) => {
-    // Spotify may return multiple editions of the same album.
     const normalizedName = album.name.toLowerCase().trim();
 
     if (seen.has(normalizedName)) {
@@ -145,6 +143,15 @@ function removeDuplicateAlbums(albums) {
     return true;
   });
 }
+
+// Serve the Vite frontend after Render runs npm run build
+const distPath = path.join(__dirname, "../dist");
+
+app.use(express.static(distPath));
+
+app.get("*", (req, res) => {
+  res.sendFile(path.join(distPath, "index.html"));
+});
 
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
